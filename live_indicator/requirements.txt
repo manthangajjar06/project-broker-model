@@ -1,0 +1,6 @@
+﻿fastapi
+pydantic>=2.7,<3
+uvicorn[standard]
+pandas
+numpy
+lightgbm

@@ -1,0 +1,6 @@
+# Separate runtime for the demand-zone sidecar. It does not change the
+# dependencies used by the existing prediction service.
+fastapi>=0.111,<1
+pydantic>=2.7,<3
+uvicorn[standard]>=0.30,<1
+pandas>=2,<3
