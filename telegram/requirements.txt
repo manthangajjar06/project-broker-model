@@ -1,0 +1,3 @@
+# Uses the Windows certificate store so HTTPS verification still succeeds
+# when security software inserts its own certificate.
+truststore>=0.10,<1

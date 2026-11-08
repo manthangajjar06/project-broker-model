@@ -19,14 +19,26 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 
 JOB_DIRECTORY = Path(__file__).resolve().parent
+PROJECT_ROOT = JOB_DIRECTORY.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 if str(JOB_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(JOB_DIRECTORY))
 
 from batch_scan import BatchScanResult, scan_configurations  # noqa: E402
 from kite_instruments import chart_url, resolve_symbols  # noqa: E402
-from kite_login import ensure_logged_in, list_accounts, prompt_and_save_account, remove_account  # noqa: E402
+from kite_login import (  # noqa: E402
+    LoginError,
+    ensure_logged_in,
+    list_accounts,
+    prompt_and_save_account,
+    remove_account,
+)
+from kite_telegram import enter_totp_via_telegram  # noqa: E402
 from nifty100 import load_nifty100_constituents  # noqa: E402
 from scan_fresh_zones import ScanConfiguration  # noqa: E402
+from telegram import notify  # noqa: E402
+from telegram.client import TelegramError  # noqa: E402
 
 LOG = logging.getLogger("run_nifty100")
 OUTPUT_FILE = JOB_DIRECTORY / "zones_nifty100.txt"
@@ -137,25 +149,84 @@ def write_batch(batch: BatchScanResult, unresolved) -> None:
     tmp.replace(OUTPUT_FILE)
 
 
-async def login_if_needed(cdp_url: str) -> None:
+def telegram_zone_detail_blocks(batch: BatchScanResult, unresolved) -> list[str]:
+    """HTML blocks for Telegram: one block per symbol, plus optional extras."""
+
+    from telegram.format_zones import (
+        format_failures_block,
+        format_symbol_block,
+        format_unresolved_block,
+    )
+
+    blocks: list[str] = []
+    for scan in batch.successful_scans:
+        if not scan.zones:
+            continue
+        blocks.append(format_symbol_block(scan.symbol, list(scan.zones)))
+
+    if batch.failures:
+        blocks.append(format_failures_block(list(batch.failures)))
+
+    if unresolved:
+        blocks.append(format_unresolved_block(list(unresolved)))
+
+    return blocks
+
+
+def deliver_batch_to_telegram(batch: BatchScanResult, unresolved) -> None:
+    """Send the completion summary and zone details as Telegram chat messages."""
+
+    notify.notify_scan_completed(
+        scanned_ok=len(batch.successful_scans),
+        failed=len(batch.failures),
+        unresolved=len(unresolved),
+        fresh_zone_count=sum(len(scan.zones) for scan in batch.successful_scans),
+        detail_blocks=telegram_zone_detail_blocks(batch, unresolved),
+    )
+
+
+async def login_if_needed(cdp_url: str) -> str:
+    """Log in through Brave. App codes are collected on Telegram."""
+
     from playwright.async_api import async_playwright
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.connect_over_cdp(cdp_url)
         if not browser.contexts:
             raise RuntimeError("Brave did not expose a browser context over CDP.")
-        await ensure_logged_in(browser.contexts[0])
+        return await ensure_logged_in(
+            browser.contexts[0],
+            totp=enter_totp_via_telegram,
+        )
 
 
 async def main_async(cdp_url: str, limit: int | None, skip_login: bool = False) -> int:
+    try:
+        notify.notify_scan_started(limit=limit)
+    except TelegramError as error:
+        LOG.error("Telegram notification failed before the scan could start: %s", error)
+        LOG.error("Run python telegram/setup.py, then try again.")
+        return 1
+
     await asyncio.to_thread(ensure_brave_running, cdp_url)
     if not skip_login:
-        await login_if_needed(cdp_url)
-        if not _cdp_is_ready(cdp_url):
-            # Brave exited after login; relaunch it (the profile keeps the session) and re-check login.
-            LOG.warning("Brave stopped after login; restarting it.")
-            await asyncio.to_thread(ensure_brave_running, cdp_url)
-            await login_if_needed(cdp_url)
+        try:
+            login_status = await login_if_needed(cdp_url)
+            if login_status == "already-logged-in":
+                notify.notify_already_logged_in()
+            if not _cdp_is_ready(cdp_url):
+                # Brave exited after login; relaunch it (the profile keeps the session) and re-check login.
+                LOG.warning("Brave stopped after login; restarting it.")
+                await asyncio.to_thread(ensure_brave_running, cdp_url)
+                await login_if_needed(cdp_url)
+        except (LoginError, TelegramError) as error:
+            LOG.error("Kite login did not finish: %s", error)
+            try:
+                notify.notify_login_failed()
+            except TelegramError:
+                LOG.exception("Could not send the Telegram login-failed notice.")
+            return 1
+
     symbols = load_nifty100_constituents().symbols
     if limit:
         symbols = symbols[:limit]
@@ -163,6 +234,12 @@ async def main_async(cdp_url: str, limit: int | None, skip_login: bool = False) 
     batch = await scan_configurations(configurations)
     write_batch(batch, unresolved)
     LOG.info("Saved %s", OUTPUT_FILE)
+    try:
+        deliver_batch_to_telegram(batch, unresolved)
+    except TelegramError as error:
+        # The local report is already saved; do not change the scan exit code.
+        LOG.error("Scan finished, but Telegram delivery failed: %s", error)
+        LOG.error("Open the local report at %s", OUTPUT_FILE)
     return 0 if not batch.failures else 2
 
 

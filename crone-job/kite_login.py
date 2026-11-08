@@ -194,27 +194,44 @@ async def _submit_totp(page: Any, field: Any) -> None:
             pass
 
 
+async def submit_totp_code(page: Any, code: str) -> bool:
+    """Type one app code into Kite and wait briefly for the dashboard.
+
+    Returns True when the browser reaches ``/dashboard``. Returns False when
+    Kite stays on the app-code step (usually because the digits expired).
+    """
+
+    cleaned = code.strip()
+    if not cleaned:
+        return False
+
+    field = page.locator(TOTP_FIELD).first
+    try:
+        await field.fill("", timeout=5_000)
+        await field.fill(cleaned, timeout=5_000)
+    except Exception:
+        if "/dashboard" in page.url:  # already through
+            return True
+        raise
+
+    await _submit_totp(page, field)
+    for _ in range(30):  # up to 15 seconds
+        if "/dashboard" in page.url:
+            return True
+        await page.wait_for_timeout(500)
+    return False
+
+
 async def enter_totp(page: Any, user_id: str) -> bool:
     """Ask for the app code in the terminal and submit it. Up to 3 tries."""
 
     for attempt in range(1, MAX_TOTP_TRIES + 1):
-        code = await asyncio.to_thread(input, f"[{user_id}] Enter the 6-digit app code (try {attempt}/{MAX_TOTP_TRIES}): ")
-        code = code.strip()
-        if not code:
-            continue
-        field = page.locator(TOTP_FIELD).first
-        try:
-            await field.fill("", timeout=5_000)
-            await field.fill(code, timeout=5_000)
-        except Exception:
-            if "/dashboard" in page.url:  # already through
-                return True
-            raise
-        await _submit_totp(page, field)
-        for _ in range(30):  # up to 15 seconds
-            if "/dashboard" in page.url:
-                return True
-            await page.wait_for_timeout(500)
+        code = await asyncio.to_thread(
+            input,
+            f"[{user_id}] Enter the 6-digit app code (try {attempt}/{MAX_TOTP_TRIES}): ",
+        )
+        if await submit_totp_code(page, code):
+            return True
         LOG.warning("App code was not accepted (it expires every 30 seconds).")
     return False
 
@@ -250,8 +267,16 @@ async def try_accounts(
     return None
 
 
-async def ensure_logged_in(context: Any) -> str:
-    """Make sure the browser is logged in to Kite; log in with saved accounts if not."""
+async def ensure_logged_in(
+    context: Any,
+    *,
+    totp: Callable[[Any, str], Awaitable[bool]] = enter_totp,
+) -> str:
+    """Make sure the browser is logged in to Kite; log in with saved accounts if not.
+
+    ``totp`` defaults to the terminal prompt. The cron job can pass a Telegram
+    based collector instead without changing the login page automation.
+    """
 
     page = await context.new_page()
     try:
@@ -265,7 +290,7 @@ async def ensure_logged_in(context: Any) -> str:
                 raise LoginError("No Kite account available to log in with.")
 
         while True:
-            winner = await try_accounts(page, list_accounts())
+            winner = await try_accounts(page, list_accounts(), totp=totp)
             if winner:
                 LOG.info("Logged in to Kite as %s.", winner)
                 return winner

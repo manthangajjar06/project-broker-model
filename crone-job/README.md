@@ -1,13 +1,20 @@
 # NIFTY 100 fresh-zone scanner (crone-job)
 
 Downloads the official NIFTY 100 list, logs in to Kite (saved ID/password +
-app code typed in the terminal), opens each stock's two-hour chart in your
+app code collected on Telegram), opens each stock's two-hour chart in your
 Brave browser, loads ~2 years of history, and writes every untouched (`fresh`)
 demand zone, scored by the LightGBM model, to `zones_nifty100.txt`.
 
 It reuses the scanner functions in `../live_indicator/api` and changes nothing
 there (no live API, Tampermonkey script, model or zone-history changes).
-Keep `crone-job/` and `live_indicator/` side by side.
+Keep `crone-job/`, `live_indicator/`, and `telegram/` side by side.
+
+Telegram must already be set up (`python telegram/setup.py`). When the scan
+starts you get a Telegram message; if Kite needs an app code, the bot asks for
+the six digits there (up to three tries, 180 seconds each). When the batch
+finishes, Telegram gets a short summary plus the zone details as chat messages.
+The local `zones_nifty100.txt` report is still written on disk; a Telegram
+delivery problem does not delete that file or change the scan result.
 
 ## Files
 
@@ -15,6 +22,7 @@ Keep `crone-job/` and `live_indicator/` side by side.
 |---|---|
 | `run_nifty100.py` | **Main entry point** - login, resolve tokens, scan all symbols |
 | `kite_login.py` | Saved-account login (passwords in Windows Credential Manager) |
+| `kite_telegram.py` | Asks Telegram for the app code and submits it to Kite |
 | `kite_instruments.py` | Symbol -> Kite instrument token -> chart URL |
 | `nifty100.py` | Downloads/validates the official NIFTY 100 constituents |
 | `batch_scan.py` | Scans many symbols; one failure never stops the batch |
@@ -25,6 +33,8 @@ Keep `crone-job/` and `live_indicator/` side by side.
 
 ```
 python -m pip install -r crone-job/requirements.txt
+python -m pip install -r telegram/requirements.txt
+python telegram/setup.py
 ```
 
 Close Brave completely, then start it with a debugging port and a separate
@@ -44,10 +54,10 @@ python crone-job/run_nifty100.py --limit 3     # quick test, first 3 stocks
 python crone-job/run_nifty100.py               # full NIFTY 100 (about 2-2.5 hours)
 ```
 
-If Brave is not logged in to Kite, you are asked for User ID + password once
-(saved securely), then for the 6-digit app code. Later runs only ask for the
-app code. Saved accounts are tried in order, one attempt each; if one is
-rejected the next is used.
+If Brave is not logged in to Kite, saved passwords are used automatically and
+the 6-digit app code is requested on Telegram. Later runs skip the app code
+when the Brave profile is still logged in. Saved accounts are tried in order,
+one attempt each; if one is rejected the next is used.
 
 | Option | Meaning |
 |---|---|
