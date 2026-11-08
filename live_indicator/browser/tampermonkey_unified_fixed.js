@@ -8,14 +8,13 @@
 // @run-at       document-idle
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
-// @connect      127.0.0.1
-// @connect      localhost
+// @connect      project-broker-model.onrender.com
 // ==/UserScript==
 
 (function () {
   'use strict';
   const W = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-  const API_URL = 'http://127.0.0.1:8003/scan';
+  const API_URL = 'https://project-broker-model.onrender.com/scan';
   const POLL_MS = 2500;
   const LOCKED = { lock: true, disableSelection: true, disableSave: true };
   const COLORS = { fresh: '#00C853', worked: '#FFB300', invalidated: '#90A4AE', entry: '#2196F3' };
