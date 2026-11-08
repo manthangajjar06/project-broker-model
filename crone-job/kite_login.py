@@ -1,11 +1,14 @@
 """Semi-automatic Kite login for the scanner's Brave session.
 
-* User IDs are remembered in ``~/.kite_zone_scanner/accounts.json`` (no secrets).
+Credential storage (local machine only — never the git repo):
+
+* User IDs are remembered in ``%USERPROFILE%\\.kite_zone_scanner\\accounts.json``
+  (IDs only, no passwords). That folder is outside this project.
 * Passwords live ONLY in the operating system's credential vault via
-  ``keyring`` (Windows Credential Manager on Windows) - never in the project
-  folder, never in plain text.
-* The one-time "app code" (TOTP) is never stored: it is typed in the terminal
-  each time because it changes every 30 seconds.
+  ``keyring`` (Windows Credential Manager on Windows) — never in the project
+  folder, never in any JSON/env file, never in git.
+* The one-time "app code" (TOTP) is never stored: it is collected on Telegram
+  (or the terminal) because it changes every 30 seconds.
 * Saved accounts are tried in order, one attempt each (so a wrong password is
   never hammered repeatedly); the next saved account is used if one is rejected.
 """
@@ -67,7 +70,11 @@ def _save_ids(user_ids: list[str]) -> None:
 
 
 def add_account(user_id: str, password: str) -> None:
-    """Save (or update) an account. A new ID goes to the end of the retry order."""
+    """Save (or update) an account. A new ID goes to the end of the retry order.
+
+    The password is written only to the OS keyring. The on-disk accounts file
+    stores the user ID list and must never contain the password.
+    """
 
     user_id = user_id.strip().upper()
     if not user_id or not password:
@@ -77,6 +84,13 @@ def add_account(user_id: str, password: str) -> None:
     if user_id not in ids:
         ids.append(user_id)
         _save_ids(ids)
+    # Defence in depth: refuse to continue if a password ever leaked into the IDs file.
+    stored = ACCOUNTS_FILE.read_text(encoding="utf-8") if ACCOUNTS_FILE.is_file() else ""
+    if password and password in stored:
+        raise LoginError(
+            "Refusing to keep a password inside accounts.json. "
+            "Passwords must stay in the OS credential vault only."
+        )
 
 
 def remove_account(user_id: str) -> bool:

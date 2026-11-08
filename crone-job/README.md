@@ -9,7 +9,9 @@ It reuses the scanner functions in `../live_indicator/api` and changes nothing
 there (no live API, Tampermonkey script, model or zone-history changes).
 Keep `crone-job/`, `live_indicator/`, and `telegram/` side by side.
 
-Telegram must already be set up (`python telegram/setup.py`). When the scan
+Telegram must already be set up (`python telegram/setup.py`). You can start a
+scan from Telegram with `/scan` (`python telegram/bot.py` must be running), or
+nightly at 9:00 PM via `telegram/install_nightly_task.ps1`. When the scan
 starts you get a Telegram message; if Kite needs an app code, the bot asks for
 the six digits there (up to three tries, 180 seconds each). When the batch
 finishes, Telegram gets a short summary plus the zone details as chat messages.
@@ -67,6 +69,17 @@ one attempt each; if one is rejected the next is used.
 | `--skip-login` | Don't check or perform login |
 | `--cdp-url URL` | Non-default debugging address |
 | `--limit N` | Scan only the first N symbols |
+
+## Where credentials live (not in git)
+
+| Secret | Location |
+|---|---|
+| Kite user IDs | `%USERPROFILE%\.kite_zone_scanner\accounts.json` (outside this repo) |
+| Kite passwords | Windows Credential Manager via `keyring` (service `kite-zone-scanner`) |
+| Telegram bot token / chat id | Project-root `.env` (gitignored) |
+| App codes (TOTP) | Never stored |
+
+Do not put passwords in `app.json`, project JSON files, or the git repo.
 
 Results are written to `crone-job/zones_nifty100.txt` only when the batch
 finishes. Exit code 2 means at least one symbol failed (listed in the file).

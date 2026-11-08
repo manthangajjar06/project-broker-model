@@ -12,6 +12,7 @@ import re
 import time
 from dataclasses import dataclass
 
+from telegram.app_code_bridge import clear_app_code, consume_app_code
 from telegram.client import TelegramError, TelegramSettings, get_updates, is_allowed_chat, load_settings, send_message
 
 LOG = logging.getLogger("telegram.app_code")
@@ -19,7 +20,8 @@ LOG = logging.getLogger("telegram.app_code")
 # Long enough to open the authenticator app; still short enough that a hung
 # cron job does not wait forever for one attempt.
 DEFAULT_WAIT_SECONDS = 180
-POLL_SECONDS = 20
+# Short polls so a code dropped by the command bot is noticed quickly.
+POLL_SECONDS = 5
 
 # Whole message is six digits, optionally with spaces or hyphens between them.
 _CODE_ONLY = re.compile(r"^\s*(\d[\s\-]*){6}\s*$")
@@ -91,12 +93,25 @@ def wait_for_app_code(
     offset = start_offset
     if offset is None:
         offset = discard_pending_updates(settings)
+    clear_app_code()
 
     deadline = time.monotonic() + max(1, timeout_seconds)
     while time.monotonic() < deadline:
+        bridged = consume_app_code()
+        if bridged is not None:
+            LOG.info("Received a 6-digit app code via the local bot bridge.")
+            return bridged
+
         remaining = int(deadline - time.monotonic())
         poll_timeout = min(POLL_SECONDS, max(1, remaining))
-        updates = get_updates(offset=offset, timeout_seconds=poll_timeout, settings=settings)
+        try:
+            updates = get_updates(offset=offset, timeout_seconds=poll_timeout, settings=settings)
+        except TelegramError as error:
+            # Another local process (the command bot) may still be long-polling.
+            # Keep waiting; the bot bridge can still deliver the digits.
+            LOG.warning("getUpdates while waiting for app code: %s", error)
+            time.sleep(2)
+            continue
 
         for update in updates:
             update_id = update.get("update_id")

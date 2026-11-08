@@ -126,20 +126,20 @@ class FakePage:
 class SelectUserTests(unittest.TestCase):
     def test_full_form_fills_user_id(self):
         page = FakePage(True, "Login")
-        asyncio.run(kite_login.select_user(page, "IMN390"))
-        self.assertEqual(page.filled[kite_login.USER_ID_FIELD], "IMN390")
+        asyncio.run(kite_login.select_user(page, "AB1234"))
+        self.assertEqual(page.filled[kite_login.USER_ID_FIELD], "AB1234")
 
     def test_remembered_same_user_skips_user_id(self):
-        page = FakePage(False, "IMN390\nChange user\nPassword")
-        asyncio.run(kite_login.select_user(page, "imn390"))
+        page = FakePage(False, "AB1234\nChange user\nPassword")
+        asyncio.run(kite_login.select_user(page, "ab1234"))
         self.assertEqual(page.filled, {})
         self.assertEqual(page.clicked, [])
 
     def test_remembered_other_user_clicks_change_user(self):
         page = FakePage(False, "ABC123\nChange user\nPassword")
-        asyncio.run(kite_login.select_user(page, "IMN390"))
+        asyncio.run(kite_login.select_user(page, "AB1234"))
         self.assertEqual(page.clicked, [kite_login.CHANGE_USER_LINK])
-        self.assertEqual(page.filled[kite_login.USER_ID_FIELD], "IMN390")
+        self.assertEqual(page.filled[kite_login.USER_ID_FIELD], "AB1234")
 
 
 class TotpPage:
@@ -179,13 +179,13 @@ class EnterTotpTests(unittest.TestCase):
     def test_auto_submitted_code_succeeds_without_touching_vanished_elements(self):
         page = TotpPage(auto_submit=True)
         with patch("builtins.input", return_value="018659"):
-            self.assertTrue(asyncio.run(kite_login.enter_totp(page, "IMN390")))
+            self.assertTrue(asyncio.run(kite_login.enter_totp(page, "AB1234")))
         self.assertEqual(page.clicks, 0)
 
     def test_rejected_code_returns_false_after_three_tries_without_crashing(self):
         page = TotpPage(auto_submit=False)
         with patch("builtins.input", return_value="000000"):
-            self.assertFalse(asyncio.run(kite_login.enter_totp(page, "IMN390")))
+            self.assertFalse(asyncio.run(kite_login.enter_totp(page, "AB1234")))
 
 
 if __name__ == "__main__":

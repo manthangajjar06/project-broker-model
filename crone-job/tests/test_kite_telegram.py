@@ -51,13 +51,13 @@ class EnterTotpViaTelegramTests(unittest.TestCase):
             patch.object(kite_telegram.notify, "notify_app_code_accepted") as accepted,
             patch.object(kite_telegram, "wait_for_app_code", return_value="123456"),
         ):
-            ok = asyncio.run(kite_telegram.enter_totp_via_telegram(page, "IMN390"))
+            ok = asyncio.run(kite_telegram.enter_totp_via_telegram(page, "AB1234"))
 
         self.assertTrue(ok)
         self.assertEqual(page.submitted, ["123456"])
         needed.assert_called_once()
         received.assert_called_once()
-        accepted.assert_called_once_with("IMN390")
+        accepted.assert_called_once_with("AB1234")
 
     def test_retries_after_rejected_code_then_succeeds(self):
         page = FakeTotpPage(accept_codes={"999999"})
@@ -69,7 +69,7 @@ class EnterTotpViaTelegramTests(unittest.TestCase):
             patch.object(kite_telegram.notify, "notify_app_code_rejected") as rejected,
             patch.object(kite_telegram, "wait_for_app_code", side_effect=lambda **kwargs: next(codes)),
         ):
-            ok = asyncio.run(kite_telegram.enter_totp_via_telegram(page, "IMN390"))
+            ok = asyncio.run(kite_telegram.enter_totp_via_telegram(page, "AB1234"))
 
         self.assertTrue(ok)
         self.assertEqual(page.submitted, ["000000", "999999"])
@@ -82,7 +82,7 @@ class EnterTotpViaTelegramTests(unittest.TestCase):
             patch.object(kite_telegram.notify, "notify_app_code_timeout") as timed_out,
             patch.object(kite_telegram, "wait_for_app_code", return_value=None),
         ):
-            ok = asyncio.run(kite_telegram.enter_totp_via_telegram(page, "IMN390"))
+            ok = asyncio.run(kite_telegram.enter_totp_via_telegram(page, "AB1234"))
 
         self.assertFalse(ok)
         self.assertEqual(timed_out.call_count, 3)
