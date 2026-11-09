@@ -45,7 +45,7 @@ Create [`architecture.md`](architecture.md) at the project root. It documents th
 
 - Live stack lives in [`live_indicator/`](live_indicator/) (no `live_indicator_model` folder). Chart overlay: [`tampermonkey_unified_fixed.js`](live_indicator/browser/tampermonkey_unified_fixed.js); scan API: [`unified_server_fixed.py`](live_indicator/api/unified_server_fixed.py).
 - Zones are **leg-in → boring/UOC → leg-out** ([`DRBR.py`](live_indicator/api/DRBR.py)); entry rules in [`scan_support_fixed.py`](live_indicator/api/scan_support_fixed.py) / [`zone_tracker_v2.py`](live_indicator/api/zone_tracker_v2.py).
-- Current ML is **supervised LightGBM** zone quality (`p_accept`), not a trading agent. Features: 31 columns in [`feature_engineering.py`](live_indicator/api/feature_engineering.py) (TR/ATR ratios, volume, zone geometry). **Missing today:** EMA 20–50, footprints, weekly/monthly trends, explicit SL/TP, failure-reason learning.
+- Current ML is **supervised LightGBM** zone quality (`p_accept`), not a trading agent. Features: 31 columns in [`feature_engineering.py`](live_indicator/api/feature_engineering.py) (TR/ATR ratios, volume, zone geometry). **Missing today:** EMA 20–50, weekly/monthly trends, explicit SL/TP, failure-reason learning. Footprints, delta, and CVD are out of scope.
 - Production status is only `fresh` / `worked` (touch). True invalidation (`close < zone_low`) exists in v2 tracker only—RL rewards will standardize on an extended lifecycle.
 - **Scope note:** the current pipeline and this plan are **long-only (demand zones)**. Supply zones are out of scope until demand is validated.
 
@@ -73,7 +73,6 @@ flowchart TB
   subgraph ingest [Data Ingest]
     Kite2h[Kite_2h_candles]
     Resample[Resample_D_W_M_closed_bars_only]
-    Proxies[Volume_profile_and_CVD_proxies]
   end
 
   subgraph zones [Zone Layer reuse live_indicator]
@@ -107,7 +106,6 @@ flowchart TB
   Kite2h --> Resample
   Kite2h --> Detect
   Resample --> MultiTF
-  Proxies --> MultiTF
   Detect --> Build
   Build --> Feat31
   Build --> Struct
@@ -147,8 +145,7 @@ flowchart TB
 | Language | Python 3.11+ | Matches existing FastAPI / pandas stack |
 | Zone detection | Reuse `live_indicator` DRBR + `scan_support_fixed` | Keep UOC geometry and entry rules as env primitives |
 | Indicators | `pandas-ta` (or pure pandas) | EMA 20/50, ATR/TR, multi-TF resampling |
-| Footprints | Phase-1 **proxies** (volume buckets, delta/CVD from tick if available); Phase-2 real footprint feed when sourced | Kite chart OHLCV alone cannot supply true footprints |
-| Structure features | Custom module over leg-in, UOC, leg-out candles; optional small 1D-CNN or GRU encoder later | Goal 9: full zone anatomy |
+| Structure features | Custom module over leg-in, UOC, leg-out candles; optional small 1D-CNN or GRU encoder later | Goal 9: full zone anatomy. Candle volume vs average only. No footprint, delta, or CVD. |
 | Env | **Gymnasium** | `ZoneApproachEnv`: episode when price nears UOC |
 | Simulator | Custom fill / slippage / gap / cost module | Realistic fills; shared by backtest and env |
 | Baseline policies | Rule-based and grid search (Optuna) | Benchmarks the RL agent must beat |
@@ -397,7 +394,6 @@ If a gate fails, stop and fix the data, features or definitions before adding mo
 | Stacking leakage via `p_accept` | Out-of-fold predictions only |
 | Too few episodes for RL | Escalation ladder; bandit before PPO; pool instruments; consider offline RL later |
 | Non-stationarity / regime change | Walk-forward testing, drift monitoring, scheduled retrain with promotion gate |
-| Footprint data gap | Proxies in phase 1; real tick/order-flow data only when sourced; ablate to show whether proxies add value |
 | Unrealistic fills in backtest | Conservative simulator (§11); paper trading before live |
 | Overfitting and multiple testing | Frozen definitions, hold-out instruments and period, experiment log, bootstrap CIs |
 | Label ambiguity | Explicit rules, same-bar convention, manual review of samples |

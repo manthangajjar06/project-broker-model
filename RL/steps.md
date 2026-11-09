@@ -9,7 +9,7 @@
 | Overall status | **Awaiting approval to begin Step 0** |
 | Current step | — |
 | Last completed | — |
-| Last updated | 2026-11-08 |
+| Last updated | 2026-11-09 |
 
 ---
 
@@ -36,7 +36,6 @@
 | 0.5 | 0 | Phase 0 gate review | not started | Labels + leakage + leakage tests all pass |
 | 1.1 | 1 | Multi-TF features (closed-bar D/W/M only) | not started | Truncation tests pass |
 | 1.2 | 1 | Structure features (leg-in / UOC / leg-out) | not started | Features join cleanly to zone rows |
-| 1.3 | 1 | Volume / CVD proxies (phase-1) | not started | Ablation-ready columns present |
 | 1.4 | 1 | Calibrated OOF probability head (LightGBM) | not started | Beats “take every zone”; calibration OK |
 | 1.5 | 1 | Phase 1 gate review + SHAP report | not started | Gate criteria met on OOS |
 | 2.1 | 2 | Rule-based attribution tagger | not started | Tag list frozen in config |
@@ -153,25 +152,14 @@
 | **Deliverable** | Leg-in / UOC / leg-out size, speed, body-to-range, candle count, UOC/ATR, wick & volume vs average |
 | **Gate** | Features join 1:1 to labeled zone rows with no look-ahead |
 | **Approval** | pending |
-| **Notes** | Optional CNN/GRU encoder is later — not this step |
-
-### Step 1.3 — Volume / CVD proxies
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 1.2 complete |
-| **Deliverable** | Phase-1 proxies (volume buckets, delta/CVD if tick available); documented as proxies not true footprints |
-| **Gate** | Columns present and ablatable |
-| **Approval** | pending |
-| **Notes** | |
+| **Notes** | Optional CNN/GRU encoder is later — not this step. Candle volume vs average stays here. Footprint, delta, and CVD are out of scope. |
 
 ### Step 1.4 — Calibrated OOF probability head
 
 | | |
 |--|--|
 | **Status** | `not started` |
-| **Depends on** | 1.3 complete |
+| **Depends on** | 1.2 complete |
 | **Deliverable** | LightGBM + isotonic/Platt; time-aware CV; **out-of-fold** `p_accept` only; MLflow run |
 | **Gate** | Beats “take every zone” OOS; calibration (Brier / ECE) under configured threshold |
 | **Approval** | pending |
@@ -424,6 +412,7 @@
 | Date | Decision | By |
 |------|----------|----|
 | 2026-11-08 | Created this tracker from plan v2; no implementation until Step 0.0 approved | Agent + user pending |
+| 2026-11-09 | Removed Step 1.3 (volume / CVD / footprint proxies). Phase 1 goes 1.2 → 1.4. | User |
 
 ---
 
