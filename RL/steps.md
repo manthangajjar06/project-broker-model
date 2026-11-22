@@ -1,423 +1,132 @@
-# RL Zone Agent — Implementation Steps Tracker
-
-**Source plan:** [`rl_architecture_plan_v2.md`](rl_architecture_plan_v2.md)  
-**Rule:** Move to the next step only when the previous step is **complete** and its gate is **passed**.  
-**Rule:** Do not start any step’s implementation until the user explicitly approves that step.
-
-| Field | Value |
-|-------|-------|
-| Overall status | **Awaiting approval to begin Step 0** |
-| Current step | — |
-| Last completed | — |
-| Last updated | 2026-11-09 |
-
----
-
-## How to use this file
-
-1. User reviews the step and says **approve Step N** (or equivalent).
-2. Agent implements only that step, then updates Status / Gate / Notes here.
-3. User reviews the gate evidence; if passed, approve the next step.
-4. If a gate fails: stop, fix data/features/definitions, do **not** add model complexity.
-
-**Status values:** `not started` | `awaiting approval` | `in progress` | `complete` | `blocked` | `skipped`
-
----
-
-## Step index
-
-| Step | Phase | Title | Status | Gate |
-|------|-------|-------|--------|------|
-| 0.0 | 0 | Write root `architecture.md` from plan v2 | not started | Doc reviewed & accepted |
-| 0.1 | 0 | Package skeleton + YAML config schema (frozen §6 defaults) | not started | Schema validates; definitions frozen in config |
-| 0.2 | 0 | Leakage / look-ahead unit tests (fail-first) | not started | Tests exist and pass on stubs |
-| 0.3 | 0 | Historical zone dataset build (detect → Parquet + version hashes) | not started | Dataset versioned; counts reviewable |
-| 0.4 | 0 | Outcome labeler (§6.2–6.4) | not started | Label counts & base rates reviewed |
-| 0.5 | 0 | Phase 0 gate review | not started | Labels + leakage + leakage tests all pass |
-| 1.1 | 1 | Multi-TF features (closed-bar D/W/M only) | not started | Truncation tests pass |
-| 1.2 | 1 | Structure features (leg-in / UOC / leg-out) | not started | Features join cleanly to zone rows |
-| 1.4 | 1 | Calibrated OOF probability head (LightGBM) | not started | Beats “take every zone”; calibration OK |
-| 1.5 | 1 | Phase 1 gate review + SHAP report | not started | Gate criteria met on OOS |
-| 2.1 | 2 | Rule-based attribution tagger | not started | Tag list frozen in config |
-| 2.2 | 2 | Multi-label attribution model + SHAP + clustering | not started | Manual sample review of losers |
-| 2.3 | 2 | Phase 2 gate review | not started | Tags accepted on reviewed sample |
-| 3.1 | 3 | Fill / slippage / gap / cost simulator | not started | Same-bar & gap rules verified by tests |
-| 3.2 | 3 | `ZoneApproachEnv` (Gymnasium) | not started | Episodes run end-to-end on sample data |
-| 3.3 | 3 | Baseline policies (fixed plan + `p_accept` filter) | not started | Metrics logged in MLflow |
-| 3.4 | 3 | Grid-searched static plan (Optuna, validation only) | not started | Best static plan on walk-forward |
-| 3.5 | 3 | Contextual bandit plan policy | not started | Bandit beats best static plan (WF) |
-| 3.6 | 3 | Phase 3 gate review | not started | Bandit > static on walk-forward |
-| 4.1 | 4 | MaskablePPO plan-selection (gated) | not started | Beats bandit under §10.4 |
-| 4.2 | 4 | PPO management actions (hold / exit / BE) | not started | Beats plan-only PPO under §10.4 |
-| 4.3 | 4 | Phase 4 gate review | not started | Acceptance criteria met |
-| 5.1 | 5 | FastAPI `/rl/decide` + `/rl/outcome` | not started | Endpoints smoke-tested |
-| 5.2 | 5 | Tampermonkey RL entry/SL/TP overlay | not started | Chart lines match API decisions |
-| 5.3 | 5 | Paper-trade loop + experience logging | not started | ≥ 3 months; consistent with backtest |
-| 5.4 | 5 | Phase 5 gate review | not started | Paper ≈ backtest within tolerance |
-| 6.1 | 6 | Retrain / champion–challenger / promotion | not started | Promotion process proven offline |
-| 6.2 | 6 | Drift monitoring + kill switch + rollback | not started | Alerts & kill switch tested |
-| 6.3 | 6 | Optional small live (only if 6.1–6.2 pass) | not started | Explicit user go-live approval |
-
----
-
-## Phase 0 — Foundations (frozen definitions, data, leakage)
-
-### Step 0.0 — Write root `architecture.md`
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | Plan v2 accepted |
-| **Deliverable** | [`architecture.md`](../architecture.md) at project root covering §§14 of the plan (goals, stack, contracts, eval, roadmap) |
-| **Gate** | User reviews and accepts the architecture doc |
-| **Approval** | pending |
-| **Notes** | Design only — no training code |
-
-### Step 0.1 — Package skeleton + config schema
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 0.0 complete |
-| **Deliverable** | `rl_zone_agent/` package layout (`data/`, `features/`, `labels/`, `sim/`, `models/`, `env/`, `policies/`, `eval/`, `serve/`, `configs/`, `tests/`) + pydantic-validated YAML with frozen §6 defaults (`approach_k`, `touch_rule`, `bounce_min_r`, outcomes, attribution tag list, costs) |
-| **Gate** | Config loads; changing a frozen definition requires a new experiment id |
-| **Approval** | pending |
-| **Notes** | |
-
-### Step 0.2 — Leakage / look-ahead tests
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 0.1 complete |
-| **Deliverable** | pytest suite: closed-bar HTF truncation equality; `availability_time <= decision_time`; zone usable only after leg-out confirmed; purged/embargo split helpers |
-| **Gate** | All leakage tests pass |
-| **Approval** | pending |
-| **Notes** | |
-
-### Step 0.3 — Versioned historical zone dataset
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 0.2 complete |
-| **Deliverable** | Parquet (+ DuckDB or extend `zone_store`) of zones from full history via reused `detect_once` / `build_zones`; dataset version hash; instrument coverage report |
-| **Gate** | Dataset version recorded; row counts by instrument/year reviewable |
-| **Approval** | pending |
-| **Notes** | Prefer Kite Connect historical 2h; do not rely on scraper for training |
-
-### Step 0.4 — Outcome labeler
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 0.3 complete |
-| **Deliverable** | Labeler implementing lifecycle + terminal outcomes (`early_bounce`, `uoc_success`, `uoc_stop`, `timeout`, `never_approached`); stores `mae_r`, `mfe_r`, `r_multiple`, fill fields; same-bar stop-first + gap-at-open rules |
-| **Gate** | Label counts and base rates reviewed with user |
-| **Approval** | pending |
-| **Notes** | Definitions must stay frozen after this gate |
-
-### Step 0.5 — Phase 0 gate
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 0.0–0.4 complete |
-| **Deliverable** | Short gate report: label base rates, leakage test status, dataset version |
-| **Gate** | User accepts Phase 0 → unlock Phase 1 |
-| **Approval** | pending |
-| **Notes** | |
-
----
-
-## Phase 1 — Features + probability head
-
-### Step 1.1 — Multi-TF features
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | Phase 0 gate passed |
-| **Deliverable** | EMA20/50, ATR regime, trend vectors for 2h/D/W/M using **last fully closed** HTF bars only |
-| **Gate** | Truncation tests pass for every HTF feature |
-| **Approval** | pending |
-| **Notes** | |
-
-### Step 1.2 — Structure features
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 1.1 complete |
-| **Deliverable** | Leg-in / UOC / leg-out size, speed, body-to-range, candle count, UOC/ATR, wick & volume vs average |
-| **Gate** | Features join 1:1 to labeled zone rows with no look-ahead |
-| **Approval** | pending |
-| **Notes** | Optional CNN/GRU encoder is later — not this step. Candle volume vs average stays here. Footprint, delta, and CVD are out of scope. |
-
-### Step 1.4 — Calibrated OOF probability head
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 1.2 complete |
-| **Deliverable** | LightGBM + isotonic/Platt; time-aware CV; **out-of-fold** `p_accept` only; MLflow run |
-| **Gate** | Beats “take every zone” OOS; calibration (Brier / ECE) under configured threshold |
-| **Approval** | pending |
-| **Notes** | Never feed in-fold `p_accept` into env later |
-
-### Step 1.5 — Phase 1 gate + SHAP
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 1.4 complete |
-| **Deliverable** | SHAP report + gate summary vs baseline |
-| **Gate** | User accepts Phase 1 → unlock Phase 2 |
-| **Approval** | pending |
-| **Notes** | |
-
----
-
-## Phase 2 — Attribution (“why”)
-
-### Step 2.1 — Rule-based attribution tagger
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | Phase 1 gate passed |
-| **Deliverable** | Multi-label tags from §6.6 written at episode end; tag list frozen in config |
-| **Gate** | Tag frequencies reviewed |
-| **Approval** | pending |
-| **Notes** | |
-
-### Step 2.2 — Attribution model + SHAP + clustering
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 2.1 complete |
-| **Deliverable** | Multi-label model; SHAP; HDBSCAN on losers; candidate new rules documented |
-| **Gate** | Manual review of a sample of losing zones |
-| **Approval** | pending |
-| **Notes** | |
-
-### Step 2.3 — Phase 2 gate
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 2.1–2.2 complete |
-| **Deliverable** | Review notes + accepted tag set |
-| **Gate** | User accepts Phase 2 → unlock Phase 3 |
-| **Approval** | pending |
-| **Notes** | |
-
----
-
-## Phase 3 — Simulator, env, baselines → bandit
-
-### Step 3.1 — Fill / slippage / gap / cost simulator
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | Phase 2 gate passed |
-| **Deliverable** | Shared simulator (§11): limit fills, gaps at open, slippage, costs; same-bar stop-first |
-| **Gate** | Property/unit tests cover fill edge cases |
-| **Approval** | pending |
-| **Notes** | Same module for backtest, env, and paper later |
-
-### Step 3.2 — `ZoneApproachEnv`
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 3.1 complete |
-| **Deliverable** | Gymnasium env; discrete plans (§8); obs = 31 + multi-TF + structure + approach + OOF `p_accept` + position state; reward = net R after costs |
-| **Gate** | Sample episodes resolve with correct outcomes |
-| **Approval** | pending |
-| **Notes** | Management actions not yet |
-
-### Step 3.3 — Baseline policies
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 3.2 complete |
-| **Deliverable** | (1) take every zone fixed plan; (2) `p_accept`-filtered; walk-forward metrics in MLflow |
-| **Gate** | Metrics reproducible from logged config |
-| **Approval** | pending |
-| **Notes** | |
-
-### Step 3.4 — Grid-searched static plan
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 3.3 complete |
-| **Deliverable** | Optuna over plan grid on validation only; evaluate on walk-forward |
-| **Gate** | Best static plan recorded; no test-set tuning |
-| **Approval** | pending |
-| **Notes** | |
-
-### Step 3.5 — Contextual bandit
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 3.4 complete |
-| **Deliverable** | Contextual bandit over discrete plan set |
-| **Gate** | Bandit beats best static plan on walk-forward |
-| **Approval** | pending |
-| **Notes** | If gate fails → stop; do not start PPO |
-
-### Step 3.6 — Phase 3 gate
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 3.5 gate passed |
-| **Deliverable** | Comparison table: baselines vs bandit |
-| **Gate** | User accepts Phase 3 → unlock Phase 4 |
-| **Approval** | pending |
-| **Notes** | |
-
----
-
-## Phase 4 — Gated PPO
-
-### Step 4.1 — MaskablePPO plan selection
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | Phase 3 gate passed |
-| **Deliverable** | sb3-contrib MaskablePPO over discrete plans; eval callbacks; MLflow |
-| **Gate** | Beats bandit under §10.4 (expectancy CI, ≥300 OOS trades, hold-outs) |
-| **Approval** | pending |
-| **Notes** | Skip/abort if sample size insufficient |
-
-### Step 4.2 — PPO management actions
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 4.1 gate passed |
-| **Deliverable** | Add hold / exit / move-to-breakeven after plan validated |
-| **Gate** | Beats plan-only PPO under §10.4 |
-| **Approval** | pending |
-| **Notes** | |
-
-### Step 4.3 — Phase 4 gate
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 4.1–4.2 complete |
-| **Deliverable** | Full eval report vs all baselines |
-| **Gate** | User accepts Phase 4 → unlock Phase 5 |
-| **Approval** | pending |
-| **Notes** | Optional d3rlpy only if logged trajectories are large enough — separate approval |
-
----
-
-## Phase 5 — Serve + paper trade
-
-### Step 5.1 — FastAPI RL endpoints
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | Phase 4 gate passed |
-| **Deliverable** | `/rl/decide`, `/rl/outcome` following `unified_server_fixed` patterns |
-| **Gate** | Smoke tests pass |
-| **Approval** | pending |
-| **Notes** | |
-
-### Step 5.2 — Tampermonkey RL overlay
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 5.1 complete |
-| **Deliverable** | Entry / SL / TP lines on chart from RL decisions |
-| **Gate** | Visual match with API output |
-| **Approval** | pending |
-| **Notes** | |
-
-### Step 5.3 — Paper-trade loop
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 5.2 complete |
-| **Deliverable** | Live data paper loop; same simulator; experience store logging; min **3 months** |
-| **Gate** | Paper results consistent with backtest within configured tolerance |
-| **Approval** | pending |
-| **Notes** | |
-
-### Step 5.4 — Phase 5 gate
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 5.3 complete |
-| **Deliverable** | Paper vs backtest report |
-| **Gate** | User accepts Phase 5 → unlock Phase 6 |
-| **Approval** | pending |
-| **Notes** | |
-
----
-
-## Phase 6 — Continuous learning & optional live
-
-### Step 6.1 — Retrain + champion/challenger
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | Phase 5 gate passed |
-| **Deliverable** | Scheduled retrain; promote only if challenger beats champion on rolling hold-out + §10.4 |
-| **Gate** | Promotion process demonstrated offline |
-| **Approval** | pending |
-| **Notes** | |
-
-### Step 6.2 — Drift, kill switch, rollback
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 6.1 complete |
-| **Deliverable** | Feature/calibration/expectancy monitors; kill switch; champion rollback path |
-| **Gate** | Simulated breach triggers kill + rollback |
-| **Approval** | pending |
-| **Notes** | |
-
-### Step 6.3 — Optional small live
-
-| | |
-|--|--|
-| **Status** | `not started` |
-| **Depends on** | 6.1–6.2 complete + explicit go-live approval |
-| **Deliverable** | Small-size live with kill switch armed |
-| **Gate** | User explicit go-live approval only |
-| **Approval** | pending |
-| **Notes** | Out of scope until demand long-only is validated; supply still out of scope |
-
----
-
-## Decision log
-
-| Date | Decision | By |
-|------|----------|----|
-| 2026-11-08 | Created this tracker from plan v2; no implementation until Step 0.0 approved | Agent + user pending |
-| 2026-11-09 | Removed Step 1.3 (volume / CVD / footprint proxies). Phase 1 goes 1.2 → 1.4. | User |
-
----
-
-## Next action
-
-**Waiting for your approval to start Step 0.0** (write root `architecture.md` from plan v2 — design only, no training code).
-
-Reply with e.g. `approve Step 0.0` to begin, or request changes to this step breakdown first.
+# Implementation steps
+
+**Contract:** [`implementation plan.md`](implementation%20plan.md)
+**Status:** Step 15's training contract is in `RL/Model/train.py`. No checkpoint is trained yet. A 2-hour candle that trades both the stop and the target stops the baseline and names the stock, the date, and the time. The goal is unchanged.
+
+The model is built in this order. A step starts only after the previous step is implemented, verified, and confirmed working. A later step is not started to save time, and a failed check is not patched inside a later step.
+
+A small change in an early step changes the zones, the prices, and the reward the policy learns from. After any change to a finished step, that step is verified again, and every step after it is verified again before new work continues.
+
+Code for these steps lives under `RL/Model/`. The trainer reads `RL/data` and `RL/RL/src/model/model.txt`. It does not import or run the live indicator, the cron job, or the Telegram bot. LightGBM stays frozen.
+
+## Step 1. Load one 2-hour file
+
+Read one CSV from `RL/data`, including `buy_volume`, `sell_volume`, `delta`, and `footprint`.
+
+**Verified when:** Reliance loads in time order, the column set matches §2 of the plan, and a footprint cell splits into price, buy, and sell. Empty early indicator cells stay empty. They are not filled with zeros.
+
+## Step 2. Decision clock
+
+The timestamp on a row is the candle open. The candle is knowable at its close: 09:15 at 11:15, 11:15 at 13:15, 13:15 at 15:15, and 15:15 at 15:30. The 15:15 close is the daily close.
+
+**Verified when:** a fixed set of Reliance rows, one of each open time, maps to those four closes, and a zone ending on the 09:15 candle cannot see the 13:15 or 15:15 bars of that day.
+
+## Step 3. Port the zone detector
+
+Port `singleCandidates` and `superCandidates` from `RL/RL/src/model/zones.js`. The base candle is the UOC. Its low and its high are the zone. Keep one zone per pattern and start, the higher probability, and SUPER when the probabilities tie. That rule is `markersFrom` in `RL/RL/src/chart/zonePrimitive.js`. The probability is not available yet, so this step checks the geometry only: pattern, start, end, and UOC high and low.
+
+**Verified when:** the Reliance zones from this port match the chart’s zone times and UOC bounds. `buildZone`’s future fresh-or-worked walk is not an input.
+
+## Step 4. Port the features and the tree
+
+Port `featuresFor` and `entryPrice` from `zones.js`, and `loadModel`, `predictProbability`, and `scoreLabel` from `RL/RL/src/model/predict.js`. The probability uses the same true-range ATR path as `zones.js`, not the CSV `atr_14` alone. Accepted is `p_accept >= 0.55`. Rejected is `p_accept <= 0.45`. Everything else is uncertain.
+
+**Verified when:** on Reliance, the same zones as the chart, and the same probabilities to about `1e-6`. The accepted set is the only set later steps are allowed to act on.
+
+## Step 5. Daily, weekly, and monthly bars
+
+Build the daily, weekly, and monthly series from that stock’s 2-hour bars, for the stock in use. Do not build them ahead for the Nifty 100, and do not write them to disk.
+
+Opening that stock’s daily chart builds the daily series only. Opening the weekly chart builds the weekly series only. Opening the monthly chart builds the monthly series only. While the model is running on that stock, build all three, because the decision reads all three. When that stock is closed, drop the series that were built for it. Closing the chart drops the series of the chart that was open. When the model leaves the stock, drop its three series.
+
+A bar is included only when its close is at or before the decision clock. The current day, week, and month stay partial. A partial bar may update a live EMA for the current input and is not written back into the completed series.
+
+EMA 20 and EMA 50 are computed on each timeframe’s own closes. ATR is the 14-period average of that timeframe’s true range. Daily volume uses the prior 14 completed sessions. Weekly volume uses the last 14 completed weeks. Monthly volume uses the last 14 completed months. Monthly EMA 50 is absent until about 50 completed months exist.
+
+**Verified when:** opening the Reliance daily chart builds the daily series and does not build the weekly or the monthly series. The weekly chart and the monthly chart each build only their own series. A model run on Reliance builds all three. Closing Reliance drops those series, and no daily, weekly, or monthly file is left behind. A Reliance decision at 11:15 sees a partial day through the 09:15 candle only, a partial week through that day, and a partial month through that day. The same decision on a later date still shows the same completed bars it showed the first time. Short files such as Hyundai and VAML emit no decision until they have an EMA-50 warmup and about a year of bars.
+
+## Step 6. Footprint summaries and the snapshot
+
+Compute the scale-free snapshot in §8 of the plan. The network never receives the raw footprint string or a raw price. Include the body and wick percentages of the leg-in, the UOC, and the leg-out, and the 2-hour EMA distances. The memory summary is not part of this step. It is added in Step 12.
+
+**Verified when:** every value in a Reliance snapshot at a decision clock can be recomputed from bars that have already closed. A bar after that clock changes none of those values.
+
+## Step 7. Request the conditions, then write `entry.py`
+
+Stop here. Do not invent the conditions, and do not write `RL/entry.py` from the plan’s examples.
+
+Ask the user for the entry conditions, the stop-loss conditions, and the target conditions that apply to each zone. Wait until the user provides them. Then write `RL/entry.py` so that, for one zone and one candidate plan, it accepts or rejects that plan using only those conditions. Each condition must be decidable at the zone’s close, from the snapshot in Step 6 and the zone prices.
+
+Copy the conditions into §15 of `implementation plan.md` in the user’s wording, then encode that wording in `entry.py`. The two must say the same thing. An empty reply means no extra filter, and `entry.py` accepts every geometrically valid plan. Once the first training run starts, the file is frozen.
+
+**Verified when:** the user has supplied the conditions or has confirmed that the list is empty, `entry.py` returns the same pass or fail as those conditions on a handful of Reliance zones, and a condition cannot see a candle after the decision clock.
+
+Steps 8 through 16 do not start until this step is confirmed.
+
+## Step 8. The one plan
+
+At the decision clock the action is skip, or the one plan from `entry.py` and §15: one entry, one stop, and one target. Prices are computed from the leg-in, the UOC, and the leg-out at that clock. The plan is masked when `entry.py` rejects it, and when the stop is not strictly below the entry. The chosen prices are then fixed.
+
+**Verified when:** on one Reliance zone, the plan’s entry, stop, and target match §15, a rejected zone is masked, and changing a later candle does not change the plan.
+
+## Step 9. Reveal candles and fill the order
+
+After a take, reveal 2-hour candles one close at a time. Apply the fill, stop, and exit rules in §7 of the plan. A bar that hits both stop and target is a loss. An exit fills at the next open. A working limit can be kept or cancelled. Cancel and expiry score 0. The position is forced flat 40 bars after the signal. The entry, stop, and target from Step 8 do not move. Hold, cancel, and exit are the only actions left. With each take, record the chance from §6: the share of already-resolved similar plans that reached the target before the stop.
+
+**Verified when:** a scripted Reliance path, including a same-bar stop and target, a marketable entry, an expiry, and an early exit, produces the fills the plan describes. The policy is not called in this step. The path is driven by hand.
+
+## Step 10. Path behaviors
+
+Label every accepted zone with one behavior from §9 of the plan: complete stop, slight breach then reversal, UOC touch and bounce, down but the base never touched, or unresolved. The label uses the reference stop just beyond the UOC low, including for a skip. A taken trade also stores no-fill, stop, target, early exit, or time stop, and the realized R against the stop the plan actually placed.
+
+**Verified when:** five hand-built paths, one for each label, are classified as that label, and a skip still receives a label without the policy being shown those candles.
+
+## Step 11. Baseline report
+
+Before any policy is trained, arm every accepted zone on the validation years 2022–2023 with the locked plan: `entryPrice`, stop just beyond the UOC low, target 2R, stop wins if one bar hits both. Write no-fill, win, and loss, the five path behaviors, and the probability buckets 0.55–0.65, 0.65–0.75, and above 0.75.
+
+Report win rate, average R after the locked cost, and trade count twice: on every armed zone, and on the zones `entry.py` also passes. The rupee charge used in that R, and the starting capital of the paper book, are the figures the user supplies for this report. Both are written into the training config and into the plan. They are not chosen to improve the report. The baseline is also run through that paper book, with the stop risking 1% of current equity, so the equity path exists before any policy is trained.
+
+**Verified when:** the report exists for 2022 and for 2023 separately, the two cuts are both present, and rerunning it without a code change reproduces the same counts.
+
+A later bar that trades both the stop and the target stops that run. The report on disk is the earlier stop-first run. It is replaced only after those candles are decided by hand.
+
+## Step 12. Experience memory
+
+Write one record per resolved accepted zone. The context is the Step 6 snapshot plus the plan, without the memory summary itself. A later decision may read a record only when that record’s outcome time is already past. Neighbors are the 16 closest past records. Until 16 exist, the summary is empty. On every pass the memory is rebuilt in time order.
+
+**Verified when:** a decision in 2018 on Reliance can see a resolved 2016 record and cannot see a 2019 record. Rebuilding the memory reproduces the same neighbors.
+
+## Step 13. Reward and the paper book
+
+The book is paper. No order is sent to a broker. Before this step, the user supplies the starting capital. The stop risks 1% of current equity. Shares are a whole number. A plan that one share cannot fit inside that risk, or inside the cash, is masked.
+
+R is `(exit − entry) / (entry − stop)` after the locked cost: slippage of `0.05 * atr_14` on the entry fill and again on the exit fill, plus the round-trip charge locked in Step 11. The reward the policy learns from is the change in paper equity divided by equity at the decision. Skip, cancel, and expiry score 0. There is no bonus for a zone that looks good.
+
+**Verified when:** the hand paths from Step 9 produce that R and that equity change, including a winner, a full stop near a 1% equity loss, and a skip that leaves the balance unchanged. A second loss on a smaller balance buys fewer shares than the first. A stated chance of 85% on a hand of similar past plans equals the share of those plans that reached the target before the stop.
+
+## Step 14. The environment
+
+Wrap Steps 8 through 13 as one calendar walked forward on one paper account. A step occurs only at an event: an accepted zone closes while the account is flat, a working limit fills or is cancelled or expires, a bar closes while a trade is open, or the stop, the target, or the time stop ends the trade. One position at a time. Names that signal at the same close are offered in symbol order. Illegal actions cannot be sampled. The balance carries across symbols inside the split.
+
+**Verified when:** one training-window walk, even if limited to a few names, moves the same paper balance from name to name, never reads a future bar into the snapshot, and the action mask matches Step 8 at every decision.
+
+## Step 15. Train
+
+Train MaskablePPO and the behavior head on the years through 2021. The network is two layers of width 128, plus the behavior head. The behavior loss weight is 0.1. Discount 0.99, GAE lambda 0.95, clip 0.2, entropy coefficient 0.01, learning rate `3e-4`. Each pass walks the training years in time order and rebuilds the memory as it goes.
+
+Select the checkpoint whose 2022–2023 trades, the ones it rated at 80–90% for the entry, stop, and target it named, did bounce at a rate inside that range, and whose average R beats the Step 11 baseline. Entropy stays on. The test years are not read during training.
+
+**Verified when:** the saved checkpoint’s stated 80–90% calls bounced inside that range on validation, its average R beats the baseline, the training log contains no decision dated 2024 or later, and the behavior-head weight in the saved config is 0.1.
+
+## Step 16. Test and the trade list
+
+Walk 2024 through the latest bar once. The published score uses weights and a memory frozen at the end of 2023. Report win rate, average R, and trade count per year for the trades the model rated at 80–90%, against the Step 11 baseline. Those calls should bounce at a rate inside that range in each test year. A second walk may append each test zone after it resolves. That second walk is labeled separately and is not the published score.
+
+The test walk starts again at the starting capital. Report ending equity and maximum drawdown beside the R figures.
+
+Write the trade list: signal time, entry, stop, target, the chance the model stated, shares, exit time, exit price, R, rupee result, equity after the trade, and the path behavior.
+
+**Verified when:** the published report has one row per test year, the frozen memory contains no test-year outcome, the test account started at the locked capital, and the trade list rows match the fills from Step 9’s rules on a sampled handful of trades.
+
+The chart drawing of that list is the review surface. It is a separate change, and it starts only after this report is confirmed.

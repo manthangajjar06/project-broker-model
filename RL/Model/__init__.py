@@ -1,0 +1,1 @@
+"""PPO zone agent. Steps 1 to 15 load bars, time them, find zones, score them, build higher timeframes, make the snapshot, price the one plan, lock take or skip, fill the order, label the path, arm the locked 2R baseline, remember resolved zones, score the paper-book reward, walk one account forward, and keep the training contract through 2021."""

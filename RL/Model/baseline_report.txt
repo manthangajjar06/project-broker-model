@@ -1,0 +1,112 @@
+step 11 baseline
+plan entryPrice, stop at the UOC low, target 2R
+same bar stop and target is a loss
+slippage_atr 0.05
+risk_fraction 0.01
+starting_capital 100000.00
+charge zerodha_delivery_nse
+brokerage 0.00
+stt_each_side 0.001
+exchange_turnover 0.0000307
+sebi_turnover 0.000001
+stamp_buy 0.00015
+gst_on_exchange_and_sebi 0.18
+symbols 100
+year 2022
+cut all
+offered 521
+armed 516
+unarmed 5
+no_fill 194
+win 144
+loss 177
+time_stop 1
+unresolved 0
+filled 322
+win_rate 0.447205
+average_r -0.412682
+trade_count 322
+r_count 322
+behavior complete_stop 273
+behavior slight_breach 17
+behavior uoc_touch 33
+behavior base_never_touched 196
+behavior unresolved 2
+bucket 0.55-0.65 no_fill 15 win 16 loss 19 time_stop 0 unresolved 0 filled 35 win_rate 0.457143 average_r -0.452367 trade_count 35
+bucket 0.65-0.75 no_fill 21 win 17 loss 14 time_stop 0 unresolved 0 filled 31 win_rate 0.548387 average_r -0.107080 trade_count 31
+bucket 0.75+ no_fill 158 win 111 loss 144 time_stop 1 unresolved 0 filled 256 win_rate 0.433594 average_r -0.444263 trade_count 256
+cut entry_py
+offered 488
+armed 488
+unarmed 0
+no_fill 186
+win 133
+loss 168
+time_stop 1
+unresolved 0
+filled 302
+win_rate 0.440397
+average_r -0.436579
+trade_count 302
+r_count 302
+behavior complete_stop 253
+behavior slight_breach 17
+behavior uoc_touch 29
+behavior base_never_touched 187
+behavior unresolved 2
+bucket 0.55-0.65 no_fill 13 win 16 loss 17 time_stop 0 unresolved 0 filled 33 win_rate 0.484848 average_r -0.369639 trade_count 33
+bucket 0.65-0.75 no_fill 20 win 15 loss 13 time_stop 0 unresolved 0 filled 28 win_rate 0.535714 average_r -0.166276 trade_count 28
+bucket 0.75+ no_fill 153 win 102 loss 138 time_stop 1 unresolved 0 filled 241 win_rate 0.423237 average_r -0.477150 trade_count 241
+year 2023
+cut all
+offered 547
+armed 546
+unarmed 1
+no_fill 229
+win 149
+loss 165
+time_stop 3
+unresolved 0
+filled 317
+win_rate 0.470032
+average_r -0.412896
+trade_count 317
+r_count 317
+behavior complete_stop 271
+behavior slight_breach 13
+behavior uoc_touch 35
+behavior base_never_touched 225
+behavior unresolved 3
+bucket 0.55-0.65 no_fill 16 win 19 loss 19 time_stop 1 unresolved 0 filled 39 win_rate 0.487179 average_r -0.268705 trade_count 39
+bucket 0.65-0.75 no_fill 26 win 23 loss 15 time_stop 0 unresolved 0 filled 38 win_rate 0.605263 average_r -0.093000 trade_count 38
+bucket 0.75+ no_fill 187 win 107 loss 131 time_stop 2 unresolved 0 filled 240 win_rate 0.445833 average_r -0.486977 trade_count 240
+cut entry_py
+offered 518
+armed 518
+unarmed 0
+no_fill 220
+win 142
+loss 154
+time_stop 2
+unresolved 0
+filled 298
+win_rate 0.476510
+average_r -0.390470
+trade_count 298
+r_count 298
+behavior complete_stop 256
+behavior slight_breach 12
+behavior uoc_touch 34
+behavior base_never_touched 214
+behavior unresolved 2
+bucket 0.55-0.65 no_fill 14 win 18 loss 18 time_stop 0 unresolved 0 filled 36 win_rate 0.500000 average_r -0.245648 trade_count 36
+bucket 0.65-0.75 no_fill 26 win 22 loss 15 time_stop 0 unresolved 0 filled 37 win_rate 0.594595 average_r -0.127341 trade_count 37
+bucket 0.75+ no_fill 180 win 102 loss 121 time_stop 2 unresolved 0 filled 225 win_rate 0.453333 average_r -0.456912 trade_count 225
+book
+orders 79
+busy_skipped 983
+masked 0
+ending_equity 100097.46
+max_drawdown 5308.48
+equity_through_2022 99802.53
+equity_through_2023 100097.46
