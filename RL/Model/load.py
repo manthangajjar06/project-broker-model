@@ -134,9 +134,26 @@ def parse_footprint(text: str) -> tuple[FootprintLevel, ...]:
     return tuple(levels)
 
 
-def load_bars(path: Path) -> list[Bar]:
-    """Read one 2-hour file in the order the rows are stored."""
-    path = Path(path)
+# path → (mtime_ns, bars). Keeps repeated saves in a long-lived worker fast.
+_BARS_CACHE: dict[str, tuple[int, list[Bar]]] = {}
+
+
+def load_bars(path: Path, *, use_cache: bool = True) -> list[Bar]:
+    """Read one 2-hour file in the order the rows are stored.
+
+    When use_cache is True (default), the parsed bars stay in memory until the
+    file's mtime changes. That makes repeated Save clicks in the label worker
+    skip the multi-second CSV parse.
+    """
+    path = Path(path).resolve()
+    key = str(path)
+    mtime_ns = path.stat().st_mtime_ns if path.exists() else -1
+
+    if use_cache:
+        hit = _BARS_CACHE.get(key)
+        if hit is not None and hit[0] == mtime_ns:
+            return hit[1]
+
     bars: list[Bar] = []
     with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.reader(handle)
@@ -155,7 +172,15 @@ def load_bars(path: Path) -> list[Bar]:
                 raise LoadError(f"{where} has {len(cells)} columns, expected {len(COLUMNS)}")
             raw = {name: cells[index] for index, name in enumerate(COLUMNS)}
             bars.append(_bar_from_row(raw, where))
+
+    if use_cache:
+        _BARS_CACHE[key] = (mtime_ns, bars)
     return bars
+
+
+def clear_bars_cache() -> None:
+    """Drop cached CSVs (tests / forced reload)."""
+    _BARS_CACHE.clear()
 
 
 def _bar_from_row(raw: dict[str, str], where: str) -> Bar:

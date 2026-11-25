@@ -1,7 +1,7 @@
 # Implementation steps
 
 **Contract:** [`implementation plan.md`](implementation%20plan.md)
-**Status:** Step 15's training contract is in `RL/Model/train.py`. No checkpoint is trained yet. A 2-hour candle that trades both the stop and the target stops the baseline and names the stock, the date, and the time. The goal is unchanged.
+**Status:** Steps 1–14 are built. Step 15’s MaskablePPO contract is in `RL/Model/train.py`. No selected checkpoint yet. A 2-hour candle that trades both the stop and the target stops the walk and asks in CMD. The LightGBM outcome-model path is [`steps 2.md`](steps%202.md) / [`implementation plan 2.md`](implementation%20plan%202.md). This file stays the Plan 1 step list.
 
 The model is built in this order. A step starts only after the previous step is implemented, verified, and confirmed working. A later step is not started to save time, and a failed check is not patched inside a later step.
 

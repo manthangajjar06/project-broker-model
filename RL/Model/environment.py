@@ -7,11 +7,14 @@ offered in symbol order. An action the mask forbids cannot be taken.
 
 The take is offered on session 6, which is the Step 8 rule. The snapshot
 is built at that close. A later bar is not part of it.
+
+When ask_when_both is set, a candle that trades both the stop and the
+target stops and asks which printed first. That is the Step 15 hand call.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Callable, Sequence
 
@@ -24,24 +27,30 @@ from Model.fill import (
     KEEP,
     LEAVE,
     OPEN,
+    STOP,
+    TARGET,
     WORKING,
+    BothTouched,
     ClosedCandle,
     Walk,
     apply_bar,
     apply_choice,
     begin,
+    finish,
 )
 from Model.higher import HigherBook
 from Model.load import Bar
 from Model.memory import Memory, Record, context_of, resolution_clock
-from Model.reward import PaperBook, Reward, score_walk
+from Model.reward import PaperBook, Reward, score_walk, stated_chance
 from Model.score import ScoredZone, accepted_zones, score_zones
-from Model.snapshot import Snapshot, snapshot_at
+from Model.snapshot import PositionState, Snapshot, snapshot_at
 from Model.zones import Zone
 from entry import ENTRY_ON_SESSION
 
 
 ACTIONS = (SKIP, TAKE, KEEP, CANCEL, HOLD, LEAVE)
+
+ResolveBoth = Callable[[BothTouched], str]
 
 
 @dataclass(frozen=True)
@@ -72,6 +81,8 @@ class Held:
     offer: Offer | None = None
     context: tuple = ()
     decided_at: datetime | None = None
+    chance: float | None = None
+    start_equity: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -83,6 +94,9 @@ class Moment:
     mask: dict[str, bool]
     snapshot: Snapshot | None
     remembered: tuple[str, ...] = ()
+    chance: float | None = None
+    offer: Offer | None = None
+    plan: object | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +108,9 @@ class StepRecord:
     equity_before: float
     equity_after: float
     reward: Reward
+    chance: float | None = None
+    behavior: str | None = None
+    decided_at: datetime | None = None
 
 
 def entry_mask(decision: Decision) -> dict[str, bool]:
@@ -151,37 +168,31 @@ def walk(
     last_year: int,
     offers: Sequence[Offer] | None = None,
     records: Sequence[Record] = (),
+    ask_when_both: bool = False,
+    resolve_both: ResolveBoth | None = None,
 ) -> list[StepRecord]:
     """Walk one account forward. `book.equity` carries from name to name."""
-    pending = sorted(
-        list(offers) if offers is not None else collect_offers(names, first_year, last_year),
-        key=lambda offer: (offer.clock, offer.symbol),
-    )
-    memory = Memory(records)
-    by_symbol = {name.symbol: name.bars for name in names}
-    held: Held | None = None
-    cursor = 0
-    record: list[StepRecord] = []
+    from Model.calendar_walk import CalendarWalk
 
-    while cursor < len(pending) or held is not None:
-        zone_clock = pending[cursor].clock if cursor < len(pending) else None
-        bar_clock = _next_clock(held) if held is not None else None
-        if held is not None and (zone_clock is None or bar_clock is None or bar_clock <= zone_clock):
-            held, step = _step_position(held, choose, book, memory)
-            if step is not None:
-                record.append(step)
-            continue
-        if cursor >= len(pending):
-            break
-        offer = pending[cursor]
-        cursor += 1
-        if held is not None:
-            before = book.equity
-            reward = Reward("busy", before, before, 0.0, 0.0, None, 0)
-            record.append(StepRecord(offer.symbol, offer.clock, {}, "busy", before, before, reward))
-            continue
-        step, held = _step_entry(offer, by_symbol[offer.symbol], choose, book, memory)
-        record.append(step)
+    calendar = CalendarWalk(
+        names,
+        book,
+        first_year,
+        last_year,
+        offers=offers,
+        records=records,
+        ask_when_both=ask_when_both,
+        resolve_both=resolve_both,
+    )
+    record: list[StepRecord] = []
+    moment = calendar.start()
+    while moment is not None:
+        action = choose(moment)
+        result = calendar.act(action)
+        if result.record is not None:
+            record.append(result.record)
+        record.extend(result.side)
+        moment = result.moment
     return record
 
 
@@ -239,16 +250,27 @@ def _step_entry(
     choose: Callable[[Moment], str],
     book: PaperBook,
     memory: Memory,
+    start_equity: float,
+    ask_when_both: bool = False,
 ) -> tuple[StepRecord, Held | None]:
     decision = build_decision(bars, offer.zone, offer.probability, offer.on_date)
     mask = entry_mask(decision)
+    snapshot = snapshot_at(bars, offer.zone, offer.clock)
+    atr = bars[offer.zone.end].atr_14 if bars[offer.zone.end].atr_14 is not None else 0.0
+    context = ()
+    if snapshot is not None:
+        context = context_of(snapshot, decision.prices, bars[offer.zone.end].close, atr)
+    chance = _chance_for(memory, context, offer.clock)
     remembered = tuple(record.symbol for record in memory.visible(offer.clock))
     moment = Moment(
         offer.symbol,
         offer.clock,
         mask,
-        snapshot_at(bars, offer.zone, offer.clock),
+        snapshot,
         remembered,
+        chance,
+        offer,
+        decision.prices,
     )
     action = choose(moment)
     require_legal(action, mask)
@@ -258,24 +280,35 @@ def _step_entry(
         written = _experience(offer, bars, moment.snapshot, decision.prices, None, None)
         if written is not None:
             memory.add(written)
-        return StepRecord(offer.symbol, offer.clock, mask, action, before, book.equity, reward), None
+        return (
+            StepRecord(offer.symbol, offer.clock, mask, action, before, book.equity, reward, chance),
+            None,
+        )
 
     signal = bars[offer.bar_index]
-    zone_bar = bars[offer.zone.end]
-    atr = zone_bar.atr_14 if zone_bar.atr_14 is not None else 0.0
     opened = begin(
         decision.prices.entry,
         decision.prices.stop,
         decision.prices.target,
         signal.close,
         offer.zone.end,
+        ask_when_both=ask_when_both,
+        symbol=offer.symbol,
     )
-    context = ()
-    if moment.snapshot is not None:
-        context = context_of(moment.snapshot, decision.prices, bars[offer.zone.end].close, atr)
-    held = Held(offer.symbol, bars, opened, offer.bar_index + 1, atr, offer, context, offer.clock)
+    held = Held(
+        offer.symbol,
+        bars,
+        opened,
+        offer.bar_index + 1,
+        atr,
+        offer,
+        context,
+        offer.clock,
+        chance,
+        start_equity,
+    )
     reward = Reward("take", before, before, 0.0, 0.0, None, 0)
-    return StepRecord(offer.symbol, offer.clock, mask, action, before, before, reward), held
+    return StepRecord(offer.symbol, offer.clock, mask, action, before, before, reward, chance), held
 
 
 def _step_position(
@@ -283,6 +316,9 @@ def _step_position(
     choose: Callable[[Moment], str],
     book: PaperBook,
     memory: Memory | None = None,
+    start_equity: float = 0.0,
+    ask_when_both: bool = False,
+    resolve_both: ResolveBoth | None = None,
 ) -> tuple[Held | None, StepRecord | None]:
     if held.next_index >= len(held.bars):
         raise RuntimeError(f"{held.symbol} ended while a position was still open")
@@ -294,22 +330,36 @@ def _step_position(
         bar.low,
         bar.close,
         session_open=bar.time == "09:15:00",
+        date=bar.date,
+        time=bar.time,
     )
     clock = known_clock(bar) or bar.open_at()
-    walk = apply_bar(held.walk, candle)
-    held = Held(held.symbol, held.bars, walk, held.next_index + 1, held.atr)
-    if walk.phase not in (WORKING, OPEN):
+    walk_state = _apply_bar(held.walk, candle, resolve_both)
+    held = _keep_held(held, walk=walk_state, next_index=held.next_index + 1)
+    if walk_state.phase not in (WORKING, OPEN):
         return None, _close_position(held, book, clock, memory)
-    mask = manage_mask(walk.phase)
-    action = choose(Moment(held.symbol, clock, mask, None))
+    mask = manage_mask(walk_state.phase)
+    snapshot = _manage_snapshot(held, book, start_equity or held.start_equity, clock)
+    action = choose(
+        Moment(
+            held.symbol,
+            clock,
+            mask,
+            snapshot,
+            (),
+            held.chance,
+            held.offer,
+            None,
+        )
+    )
     require_legal(action, mask)
     before = book.equity
-    walk = apply_choice(walk, action)
-    held = Held(held.symbol, held.bars, walk, held.next_index, held.atr)
-    if walk.phase not in (WORKING, OPEN):
+    walk_state = apply_choice(walk_state, action)
+    held = _keep_held(held, walk=walk_state)
+    if walk_state.phase not in (WORKING, OPEN):
         return None, _close_position(held, book, clock, memory)
     reward = Reward(action, before, before, 0.0, 0.0, None, 0)
-    return held, StepRecord(held.symbol, clock, mask, action, before, before, reward)
+    return held, StepRecord(held.symbol, clock, mask, action, before, before, reward, held.chance)
 
 
 def _close_position(
@@ -322,6 +372,7 @@ def _close_position(
     before = book.equity
     reward = score_walk(before, book.charge, outcome, held.walk, held.atr)
     book.equity = reward.equity_after
+    behavior = None
     if held.offer is not None:
         written = _experience(
             held.offer,
@@ -332,9 +383,21 @@ def _close_position(
             reward.r_after_cost,
             held.context,
         )
-        if written is not None and memory is not None:
-            memory.add(written)
-    return StepRecord(held.symbol, clock, {}, outcome, before, book.equity, reward)
+        if written is not None:
+            behavior = written.behavior
+            if memory is not None:
+                memory.add(written)
+    return StepRecord(
+        held.symbol,
+        clock,
+        {},
+        outcome,
+        before,
+        book.equity,
+        reward,
+        held.chance,
+        behavior,
+    )
 
 
 def _experience(
@@ -367,6 +430,93 @@ def _experience(
         trade_result,
         realized_r,
     )
+
+
+def _apply_bar(walk_state: Walk, candle: ClosedCandle, resolve_both: ResolveBoth | None) -> Walk:
+    try:
+        return apply_bar(walk_state, candle)
+    except BothTouched as hit:
+        if resolve_both is None:
+            raise
+        first = resolve_both(hit)
+        if first not in (STOP, TARGET):
+            raise ValueError(f"both-touched answer must be stop or target, got {first}")
+        opened = replace(
+            walk_state,
+            phase=OPEN,
+            fill_price=walk_state.fill_price if walk_state.fill_price is not None else hit.entry,
+        )
+        exit_price = hit.stop if first == STOP else hit.target
+        return finish(opened, first, score=None, exit_price=exit_price)
+
+
+def _keep_held(held: Held, walk: Walk | None = None, next_index: int | None = None) -> Held:
+    """Keep the offer and the decision context when a later bar arrives."""
+    return Held(
+        held.symbol,
+        held.bars,
+        held.walk if walk is None else walk,
+        held.next_index if next_index is None else next_index,
+        held.atr,
+        held.offer,
+        held.context,
+        held.decided_at,
+        held.chance,
+        held.start_equity,
+    )
+
+
+def _manage_snapshot(
+    held: Held,
+    book: PaperBook,
+    start_equity: float,
+    clock: datetime,
+) -> Snapshot | None:
+    if held.offer is None:
+        return None
+    walk_state = held.walk
+    if walk_state.phase == WORKING:
+        state = "working"
+    elif walk_state.phase == OPEN:
+        state = "in a trade"
+    else:
+        state = "flat"
+    fill = walk_state.fill_price
+    mark = held.bars[held.next_index - 1].close if held.next_index > 0 else walk_state.reference_close
+    unrealized = None
+    if fill is not None and walk_state.entry > walk_state.stop:
+        unrealized = (mark - fill) / (walk_state.entry - walk_state.stop)
+    bars_since = held.next_index - 1 - walk_state.signal_index
+    bars_in = None if walk_state.phase != OPEN else max(bars_since, 0)
+    equity = book.equity
+    start = start_equity if start_equity > 0 else equity
+    position = PositionState(
+        state=state,
+        unrealized_r=unrealized,
+        bars_since_signal=max(bars_since, 0),
+        bars_in_trade=bars_in,
+        stop_distance=mark - walk_state.stop,
+        target_distance=walk_state.target - mark,
+        equity_over_start=equity / start if start else None,
+        unrealized_rupee_over_equity=None,
+        stop_fraction_of_equity=0.01,
+    )
+    return snapshot_at(held.bars, held.offer.zone, clock, position)
+
+
+def _chance_for(memory: Memory, context: tuple, at: datetime) -> float | None:
+    """Share of similar past plans that reached the target before the stop."""
+    neighbors = memory.neighbors(context, at)
+    if not neighbors:
+        return None
+    known = [
+        record.trade_result
+        for record in neighbors
+        if record.trade_result not in (None, "unresolved")
+    ]
+    if not known:
+        return None
+    return stated_chance(known)
 
 
 def _next_clock(held: Held) -> datetime | None:

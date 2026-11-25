@@ -9,6 +9,8 @@ const LABEL_COLOR = {
   uncertain: '#FFB300',
 }
 
+const UOC_COLOR = '#e65100'
+
 const FONT = "-apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, sans-serif"
 
 const LEVELS = [
@@ -43,6 +45,24 @@ function markersFrom(zones) {
       color: LABEL_COLOR[zone.label] || LABEL_COLOR.uncertain,
     }
   })
+}
+
+/** One marker under each zone's UOC (base) candle. */
+function uocMarkersFrom(zones) {
+  const byBase = new Map()
+  for (const zone of zones) {
+    const key = `${zone.patternType}:${zone.start}`
+    const current = byBase.get(key)
+    if (!current || zone.probability > current.probability || (zone.probability === current.probability && zone.legOutMode === 'SUPER')) {
+      byBase.set(key, zone)
+    }
+  }
+  return [...byBase.values()].map((zone) => ({
+    index: zone.start + 1,
+    price: zone.low,
+    text: 'UOC',
+    color: UOC_COLOR,
+  }))
 }
 
 function levelsFrom(zones, bars) {
@@ -112,19 +132,40 @@ function drawArrow(context, x, y, down, color, size) {
   context.fill()
 }
 
+/** Small upward arrow + "UOC" label parked under the base candle low. */
+function drawUocMarkers(context, chart, series, markers, horizontal, vertical) {
+  if (!markers.length) return
+  const size = Math.max(7, Math.round(8 * vertical))
+  context.save()
+  context.font = `700 ${Math.round(11 * vertical)}px ${FONT}`
+  context.textBaseline = 'top'
+  for (const marker of markers) {
+    const xCss = chart.timeScale().logicalToCoordinate(LEFT_PAD + marker.index)
+    const yCss = series.priceToCoordinate(marker.price)
+    if (xCss == null || yCss == null) continue
+    const x = Math.round(xCss * horizontal)
+    const y = Math.round(yCss * vertical) + Math.round(4 * vertical)
+    drawArrow(context, x, y + size, false, marker.color, size)
+    context.fillStyle = marker.color
+    context.fillText(marker.text || 'UOC', x - Math.round(12 * horizontal), y + size * 2 + Math.round(2 * vertical))
+  }
+  context.restore()
+}
+
 class ZoneRenderer {
   constructor(source) {
     this.source = source
   }
 
   draw(target) {
-    const { chart, series, markers, levels } = this.source
-    if (!chart || !series || (!markers.length && !levels.length)) return
+    const { chart, series, markers, levels, uocMarkers } = this.source
+    if (!chart || !series || (!markers.length && !levels.length && !uocMarkers.length)) return
     target.useBitmapCoordinateSpace((scope) => {
       const context = scope.context
       const horizontal = scope.horizontalPixelRatio
       const vertical = scope.verticalPixelRatio
       drawLevels(context, chart, series, levels, horizontal, vertical)
+      drawUocMarkers(context, chart, series, uocMarkers, horizontal, vertical)
       const size = Math.max(6, Math.round(7 * vertical))
       context.font = `600 ${Math.round(12 * vertical)}px ${FONT}`
       context.textBaseline = 'middle'
@@ -160,6 +201,7 @@ class ZonePaneView {
 export class ZonePrimitive {
   constructor() {
     this.markers = []
+    this.uocMarkers = []
     this.levels = []
     this.chart = null
     this.series = null
@@ -180,7 +222,34 @@ export class ZonePrimitive {
 
   setZones(zones, bars = []) {
     this.markers = markersFrom(zones)
+    this.uocMarkers = uocMarkersFrom(zones)
     this.levels = levelsFrom(zones, bars)
+    this.requestUpdate()
+  }
+
+  /** One Plan-2 outcome row: entry / stop / target from the dataset. */
+  setReviewLevel(level) {
+    this.markers = []
+    this.uocMarkers = []
+    this.levels = level ? [level] : []
+    this.requestUpdate()
+  }
+
+  /**
+   * Label mode: clear accept/reject arrows, keep a single UOC marker
+   * under the base candle of the zone being labeled.
+   */
+  setLabelUoc(marker) {
+    this.markers = []
+    this.levels = []
+    this.uocMarkers = marker ? [marker] : []
+    this.requestUpdate()
+  }
+
+  clearOverlays() {
+    this.markers = []
+    this.uocMarkers = []
+    this.levels = []
     this.requestUpdate()
   }
 

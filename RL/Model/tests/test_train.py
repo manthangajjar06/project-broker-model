@@ -51,6 +51,41 @@ class TrainingContract(unittest.TestCase):
         self.assertFalse(keep_checkpoint(weak_r, 0.1, report))
         self.assertFalse(keep_checkpoint(inside, 0.2, report))
 
+    def test_score_validation_trades_uses_the_eighty_ninety_band(self):
+        from Model.broker_env import TradeLog
+        from Model.train import score_validation_trades
+
+        trades = [
+            TradeLog("RELIANCE", datetime(2022, 3, 1, 11, 15), 0.85, "target", 1.2, "uoc_touch"),
+            TradeLog("RELIANCE", datetime(2022, 4, 1, 11, 15), 0.85, "stop", -1.0, "complete_stop"),
+            TradeLog("RELIANCE", datetime(2022, 5, 1, 11, 15), 0.50, "target", 2.0, "uoc_touch"),
+            TradeLog("TCS", datetime(2023, 3, 1, 11, 15), 0.82, "target", 0.5, "uoc_touch"),
+        ]
+        scores = {row.year: row for row in score_validation_trades(trades)}
+        self.assertAlmostEqual(scores[2022].bounce_rate, 0.5)
+        self.assertEqual(scores[2022].trade_count, 2)
+        self.assertAlmostEqual(scores[2023].bounce_rate, 1.0)
+        self.assertEqual(scores[2023].trade_count, 1)
+
+
+class TrainingSmoke(unittest.TestCase):
+    def test_the_policy_takes_one_masked_step(self):
+        from Model.broker_env import build_offers, load_names
+        from Model.train import build_model, make_env
+
+        names = load_names(["RELIANCE"])
+        offers = build_offers(names, 2018, 2018)
+        self.assertGreater(len(offers), 0)
+        env = make_env(names, 2018, 2018, offers=offers, ask_when_both=False)
+        model = build_model(env)
+        obs, _ = env.reset()
+        mask = env.action_masks()
+        self.assertTrue(mask.any())
+        action, _ = model.predict(obs, action_masks=mask, deterministic=True)
+        obs2, reward, done, truncated, info = env.step(int(action))
+        self.assertEqual(obs2.shape, obs.shape)
+        self.assertIn("action_mask", info)
+
 
 if __name__ == "__main__":
     unittest.main()

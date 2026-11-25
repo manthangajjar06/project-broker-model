@@ -9,6 +9,34 @@ import {
 } from 'lightweight-charts'
 import { priceFormat, theme } from './theme'
 
+/** Default mouse / touch behaviour — chart must stay freely pannable. */
+export const CHART_INTERACTION = {
+  handleScroll: {
+    mouseWheel: true,
+    pressedMouseMove: true,
+    horzTouchDrag: true,
+    vertTouchDrag: true,
+  },
+  handleScale: {
+    axisPressedMouseMove: {
+      time: true,
+      price: true,
+    },
+    axisDoubleClickReset: {
+      time: true,
+      price: false,
+    },
+    mouseWheel: true,
+    pinch: true,
+  },
+}
+
+/** Restore pan/zoom handles only. Never touch autoScale / visible range. */
+export function restoreChartInteraction(chart) {
+  if (!chart) return
+  chart.applyOptions(CHART_INTERACTION)
+}
+
 export function createPriceChart(container) {
   const chart = createChart(container, {
     autoSize: true,
@@ -17,7 +45,7 @@ export function createPriceChart(container) {
       textColor: theme.text,
       fontFamily: theme.font,
       fontSize: 12,
-      attributionLogo: true,
+      attributionLogo: false,
       panes: {
         enableResize: true,
         separatorColor: theme.border,
@@ -25,8 +53,8 @@ export function createPriceChart(container) {
       },
     },
     grid: {
-      vertLines: { color: theme.grid },
-      horzLines: { color: theme.grid },
+      vertLines: { color: theme.grid, visible: true },
+      horzLines: { color: theme.grid, visible: true },
     },
     crosshair: {
       mode: CrosshairMode.Normal,
@@ -43,37 +71,30 @@ export function createPriceChart(container) {
         labelBackgroundColor: theme.text,
       },
     },
-    rightPriceScale: { borderColor: theme.border },
+    rightPriceScale: {
+      borderColor: theme.border,
+      autoScale: true,
+      scaleMargins: { top: 0.08, bottom: 0.08 },
+    },
     leftPriceScale: { visible: false },
     timeScale: {
       borderColor: theme.border,
       timeVisible: true,
       secondsVisible: false,
-      rightOffset: 0,
+      rightOffset: 4,
       barSpacing: 8,
-      minBarSpacing: 0.05,
-      fixLeftEdge: true,
-      fixRightEdge: true,
+      minBarSpacing: 0.5,
+      fixLeftEdge: false,
+      fixRightEdge: false,
     },
     localization: {
       locale: 'en-GB',
       dateFormat: "dd MMM 'yy",
     },
-    handleScroll: { vertTouchDrag: false },
+    ...CHART_INTERACTION,
   })
 
-  const candles = chart.addSeries(CandlestickSeries, {
-    upColor: theme.up,
-    downColor: theme.down,
-    borderUpColor: theme.up,
-    borderDownColor: theme.down,
-    wickUpColor: theme.up,
-    wickDownColor: theme.down,
-    priceFormat,
-    lastValueVisible: true,
-    priceLineVisible: true,
-  })
-
+  // EMAs first so candles paint on top of them (lines stay visible under bodies/wicks).
   const ema20 = chart.addSeries(LineSeries, {
     color: theme.ema20,
     lineWidth: 2,
@@ -92,8 +113,21 @@ export function createPriceChart(container) {
     crosshairMarkerVisible: false,
   })
 
+  const candles = chart.addSeries(CandlestickSeries, {
+    upColor: theme.up,
+    downColor: theme.down,
+    borderUpColor: theme.up,
+    borderDownColor: theme.down,
+    wickUpColor: theme.up,
+    wickDownColor: theme.down,
+    priceFormat,
+    lastValueVisible: true,
+    priceLineVisible: false,
+  })
+
   candles.priceScale().applyOptions({
-    scaleMargins: { top: 0.12, bottom: 0.06 },
+    autoScale: true,
+    scaleMargins: { top: 0.08, bottom: 0.08 },
     borderColor: theme.border,
   })
 
@@ -102,8 +136,8 @@ export function createPriceChart(container) {
     vertAlign: 'center',
     lines: [{
       text: '',
-      color: theme.watermark,
-      fontSize: 52,
+      color: 'rgba(19, 23, 34, 0.03)',
+      fontSize: 40,
       fontStyle: 'bold',
       fontFamily: theme.font,
     }],

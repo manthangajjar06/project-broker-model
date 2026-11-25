@@ -125,9 +125,21 @@ class HigherBook:
             self._bars = list(bars) if bars is not None else load_bars(csv_path(symbol))
 
 
+# One Save rebuilds daily/weekly/monthly many times with the same clock.
+# Cache by bars identity + timeframe + clock so feature encoding stays cheap.
+_SERIES_CACHE: dict[tuple[int, str, datetime], list[PeriodBar]] = {}
+_SERIES_CACHE_LIMIT = 96
+
+
 def build_series(bars: Sequence[Bar], timeframe: str, clock: datetime) -> list[PeriodBar]:
     if timeframe not in TIMEFRAMES:
         raise ValueError(f"{timeframe} is not a daily, weekly, or monthly chart")
+
+    cache_key = (id(bars), timeframe, clock)
+    cached = _SERIES_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     grouped: dict[str, list[Bar]] = {}
     for bar in _knowable(bars, clock):
         grouped.setdefault(_period_key(timeframe, bar.date), []).append(bar)
@@ -164,6 +176,10 @@ def build_series(bars: Sequence[Bar], timeframe: str, clock: datetime) -> list[P
             _live_atr(completed_atr, true_range),
             _partial_average(completed_aggs),
         ))
+
+    if len(_SERIES_CACHE) >= _SERIES_CACHE_LIMIT:
+        _SERIES_CACHE.clear()
+    _SERIES_CACHE[cache_key] = built
     return built
 
 

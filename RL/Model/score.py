@@ -31,7 +31,16 @@ class ScoredZone:
     entry_warning: bool
 
 
+_TR_ATR_CACHE: dict[int, tuple[list[float], list[float]]] = {}
+_DAILY_ATR_CACHE: dict[int, dict[str, float]] = {}
+
+
 def true_range_and_atr(bars: Sequence[Bar]) -> tuple[list[float], list[float]]:
+    cache_key = id(bars)
+    hit = _TR_ATR_CACHE.get(cache_key)
+    if hit is not None:
+        return hit
+
     true_range = []
     for index, bar in enumerate(bars):
         span = bar.high - bar.low
@@ -52,10 +61,27 @@ def true_range_and_atr(bars: Sequence[Bar]) -> tuple[list[float], list[float]]:
     else:
         for index in range(len(bars)):
             atr[index] = sum(true_range[: index + 1]) / (index + 1)
-    return true_range, atr
+
+    if len(_TR_ATR_CACHE) >= 16:
+        _TR_ATR_CACHE.clear()
+    result = (true_range, atr)
+    _TR_ATR_CACHE[cache_key] = result
+    return result
 
 
 def daily_atr(bars: Sequence[Bar]) -> dict[str, float]:
+    cache_key = id(bars)
+    hit = _DAILY_ATR_CACHE.get(cache_key)
+    if hit is not None:
+        return hit
+    result = _daily_atr_uncached(bars)
+    if len(_DAILY_ATR_CACHE) >= 16:
+        _DAILY_ATR_CACHE.clear()
+    _DAILY_ATR_CACHE[cache_key] = result
+    return result
+
+
+def _daily_atr_uncached(bars: Sequence[Bar]) -> dict[str, float]:
     days: list[dict] = []
     for bar in bars:
         last = days[-1] if days else None

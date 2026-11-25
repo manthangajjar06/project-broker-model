@@ -1,6 +1,6 @@
 # PPO zone agent — implementation plan
 
-**Status:** Ready to implement. No training code yet.
+**Status:** Plan 1 (this file) is the MaskablePPO take/skip contract. Steps 1–14 are built. Step 15 PPO training code exists; no selected checkpoint yet. The LightGBM outcome-model path lives in [`implementation plan 2.md`](implementation%20plan%202.md) and [`steps 2.md`](steps%202.md). This file is not replaced by Plan 2.
 **Target:** On a high-quality zone the model names the entry, the stop, and the target, and states an 80–90% chance, drawn from similar zones that have already resolved, that price bounces from those prices.
 **Data:** `RL/data`, Nifty 100, 2-hour bars with footprint.
 **Date locked:** 2026-11-15
@@ -151,7 +151,7 @@ On each revealed 2-hour candle the environment applies these rules, in order:
 
 1. A working limit fills when the bar trades the entry, at the entry price. If the bar opened above the entry and also trades the stop, the result is the stop. If the bar opened below the entry and then traded it, the buy is the entry and the low before that buy is not a stop.
 2. An open trade on the first candle of the day, the 09:15 candle: an open below the stop sells at that open, and an open above the target sells at that open. That exit does not take another slippage. A later candle the same day that trades the stop sells at the stop, and one that trades the target sells at the target.
-3. An open trade whose bar reaches both the stop and the target stops the run. It reports the stock, the date, and the time, and waits. It does not guess which printed first.
+3. An open trade whose bar reaches both the stop and the target stops the run. It reports the stock, the date, and the time, and waits. It does not guess which printed first. During Step 15 training the answer is typed in CMD and stored. After the model is built, temporary 1-minute data is provided for those same candles, and that data is what justifies whether the stop or the target printed first.
 4. If the trade is still open at the 2-hour close, the policy may hold or leave. Leaving fills at the next candle’s open. It cannot fill at the low or the high of the candle just seen.
 
 The entry, stop, and target chosen in §6 do not change on these steps. Hold, cancel, and exit are the only actions left. A new buffer is not applied after a candle arrives.
@@ -265,6 +265,8 @@ Training stops when, on the validation years, the trades the model rated at 80�
 
 Each training pass walks the training years in time order and rebuilds the memory as it goes. A resolved zone teaches two things: the realized R of a trade that was taken, and the path behavior of every accepted zone, taken or skipped. Both updates use only outcomes that have already happened on that pass.
 
+The 1-minute fill is not held on disk during training. When a 2-hour bar reaches both the stop and the target, the run stops and asks which printed first. Those answers are temporary. After the model is built, temporary 1-minute data for those candles is what validates the hand calls.
+
 ## 12. The baseline, before PPO
 
 Before any policy is trained, arm every accepted zone on the validation years with one locked plan:
@@ -302,6 +304,8 @@ The sequence and the verification for each step are in [`steps.md`](steps.md). A
 8. Write the trade list for the chart.
 
 The trainer reads `RL/data` and `model.txt`. It does not import or run the live indicator, the cron job, or the Telegram bot.
+
+The LightGBM outcome-model build order is only in [`implementation plan 2.md`](implementation%20plan%202.md) / [`steps 2.md`](steps%202.md).
 
 ## 15. The one plan
 

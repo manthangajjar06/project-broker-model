@@ -17,7 +17,11 @@ function Field({ label, value, color, toneName }) {
   )
 }
 
-export default function Legend({ bars, index }) {
+/**
+ * @param {{ bars: any[], index: number, compact?: boolean }} props
+ * compact = label mode: OHLC + EMAs only, so the chart stays readable.
+ */
+export default function Legend({ bars, index, compact = false }) {
   if (!bars.length) return null
   const safeIndex = index >= 0 && index < bars.length ? index : bars.length - 1
   const bar = bars[safeIndex]
@@ -27,7 +31,7 @@ export default function Legend({ bars, index }) {
   const direction = bar.close >= bar.open ? 'up' : 'down'
 
   return (
-    <div className="legend">
+    <div className={`legend${compact ? ' legend-compact' : ''}`}>
       <div className="legend-row">
         <Field label="O" value={formatPrice(bar.open)} />
         <Field label="H" value={formatPrice(bar.high)} />
@@ -36,24 +40,28 @@ export default function Legend({ bars, index }) {
         <span className={`legend-change ${tone(change)}`}>
           {formatSigned(change)} ({formatSigned(percent)}%)
         </span>
-      </div>
-      <div className="legend-row">
-        <Field label="Volume" value={formatVolume(bar.volume)} color={direction === 'up' ? theme.up : theme.down} />
-        <Field label="Avg vol 14D" value={formatVolume(bar.avgVolume)} color={theme.avgVolume} />
-        <Field label="Upper wick" value={formatPercent(bar.upperWick)} />
-        <Field label="Lower wick" value={formatPercent(bar.lowerWick)} />
-        <Field label="Body" value={formatPercent(bar.body)} />
-      </div>
-      <div className="legend-row">
-        <Field label="TR" value={formatPrice(bar.tr)} color={theme.muted} />
-        <Field label="ATR 14" value={formatPrice(bar.atr)} color={theme.atr} />
-        <Field label="DATR 14" value={formatPrice(bar.datr)} color={theme.datr} />
         <Field label="EMA 20" value={formatPrice(bar.ema20)} color={theme.ema20} />
         <Field label="EMA 50" value={formatPrice(bar.ema50)} color={theme.ema50} />
-        <Field label="Buy" value={formatVolume(bar.buyVolume)} color={theme.up} />
-        <Field label="Sell" value={formatVolume(bar.sellVolume)} color={theme.down} />
-        <Field label="Delta" value={formatSigned(bar.delta, 0)} toneName={tone(bar.delta)} />
       </div>
+      {!compact && (
+        <>
+          <div className="legend-row">
+            <Field label="Volume" value={formatVolume(bar.volume)} color={direction === 'up' ? theme.up : theme.down} />
+            <Field label="Avg vol 14D" value={formatVolume(bar.avgVolume)} color={theme.avgVolume} />
+            <Field label="Upper wick" value={formatPercent(bar.upperWick)} />
+            <Field label="Lower wick" value={formatPercent(bar.lowerWick)} />
+            <Field label="Body" value={formatPercent(bar.body)} />
+          </div>
+          <div className="legend-row">
+            <Field label="TR" value={formatPrice(bar.tr)} color={theme.muted} />
+            <Field label="ATR 14" value={formatPrice(bar.atr)} color={theme.atr} />
+            <Field label="DATR 14" value={formatPrice(bar.datr)} color={theme.datr} />
+            <Field label="Buy" value={formatVolume(bar.buyVolume)} color={theme.up} />
+            <Field label="Sell" value={formatVolume(bar.sellVolume)} color={theme.down} />
+            <Field label="Delta" value={formatSigned(bar.delta, 0)} toneName={tone(bar.delta)} />
+          </div>
+        </>
+      )}
     </div>
   )
 }

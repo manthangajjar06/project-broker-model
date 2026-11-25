@@ -53,8 +53,20 @@ def load_model(text: str) -> Model:
     return Model(tuple(trees))
 
 
+_MODEL_CACHE: dict[str, tuple[int, Model]] = {}
+
+
 def load_frozen_model(path: Path | None = None) -> Model:
-    return load_model((path or MODEL_PATH).read_text(encoding="utf-8"))
+    """Load the frozen zone scorer. Cached by path + mtime for fast repeated saves."""
+    target = Path(path or MODEL_PATH).resolve()
+    key = str(target)
+    mtime_ns = target.stat().st_mtime_ns if target.exists() else -1
+    hit = _MODEL_CACHE.get(key)
+    if hit is not None and hit[0] == mtime_ns:
+        return hit[1]
+    model = load_model(target.read_text(encoding="utf-8"))
+    _MODEL_CACHE[key] = (mtime_ns, model)
+    return model
 
 
 def predict_probability(model: Model, features: list[float]) -> float:

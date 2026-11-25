@@ -6,10 +6,13 @@ const DATR_BUFFER = 0.10
 const ACCEPT_AT = 0.55
 const ENTRY_ON_SESSION = 6
 
-export function planFor(bars, zone) {
+/**
+ * Suggested Entry / Stop / Target from the locked §15 rules.
+ * Does not wait for day 6 — used only to prefill the label form.
+ * Target is still always typed by the user when saving.
+ */
+export function lockedPlanPrices(bars, zone) {
   if (!(zone.probability >= ACCEPT_AT)) return null
-  const lastBar = bars[bars.length - 1]
-  if (!lastBar || !entryIsDue(bars, zone, lastBar.date)) return null
 
   const legIn = bars[zone.start]
   const uoc = bars[zone.start + 1]
@@ -21,14 +24,26 @@ export function planFor(bars, zone) {
   const datr = uoc.datr
   if (datr == null || !Number.isFinite(datr) || datr <= 0) return null
   const buffer = DATR_BUFFER * datr
-  const entry = entryPrice(uoc, legOut, buffer)
-  if (entry == null) return null
+  const rawEntry = entryPrice(uoc, legOut, buffer)
+  if (rawEntry == null) return null
 
-  return {
-    entry,
-    stop: stopPrice(zone.patternType, legIn, uoc, buffer),
-    target: last.close,
+  const stop = stopPrice(zone.patternType, legIn, uoc, buffer)
+  // §15 can put entry at leg-out low below the stop. For the long-position
+  // tool we need stop < entry < target so the box can draw.
+  const gap = Math.max(buffer, Math.abs(stop) * 1e-4, 0.01)
+  const entry = rawEntry > stop ? rawEntry : stop + gap
+  let target = last.close
+  if (!(target > entry)) {
+    target = entry + Math.max(entry - stop, gap)
   }
+
+  return { entry, stop, target }
+}
+
+export function planFor(bars, zone) {
+  const lastBar = bars[bars.length - 1]
+  if (!lastBar || !entryIsDue(bars, zone, lastBar.date)) return null
+  return lockedPlanPrices(bars, zone)
 }
 
 export function entryIsDue(bars, zone, onDate) {
